@@ -4,8 +4,10 @@ stages:
 pages:
   stage: deploy
   script:
-    - mkdir public
-    - cp -r * public/
+    # Create public folder if it doesn't exist
+    - mkdir -p public
+    # Copy everything EXCEPT .git, .gitlab-ci.yml, and public itself
+    - rsync -av --exclude='.git' --exclude='.gitlab-ci.yml' --exclude='public' ./ public/
   artifacts:
     paths:
       - public
