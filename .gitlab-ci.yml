@@ -1,14 +1,10 @@
-image: node:lts
-
 pages:
   stage: deploy
   script:
-    - npm ci              # Install dependencies
-    - npm run build       # Build your PWA (adjust if you don’t have a build script)
-    - mkdir .public       # Create the folder to hold files for Pages
-    - cp -r * .public     # Copy your build/output files into .public
+    - mkdir .public
+    - cp -r * .public
   artifacts:
     paths:
-      - .public           # GitLab Pages serves from this folder
+      - .public
   only:
-    - main                # Only deploy when commits are pushed to main branch
+    - main
