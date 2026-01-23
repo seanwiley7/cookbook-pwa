@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My Cookbook</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- Overlay -->
+  <div id="overlay" class="overlay hidden" onclick="closeTOC()"></div>
+
+  <!-- Table of Contents -->
+  <nav id="toc" class="toc">
+    <div id="toc-header" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+      <h3 style="margin:0;">Sections</h3>
+      <button id="toc-edit-btn" style="font-size:14px; padding:2px 6px;">Edit</button>
+    </div>
+    <ul id="toc-list"></ul>
+  </nav>
+
+
+  <header>
+    <button class="menu-btn" onclick="toggleTOC()">☰</button>
+    <h1>🍳 My Cookbook</h1>
+    <div class="header-buttons">
+      <button onclick="addSection()">+ Section</button>
+      <button onclick="showAddRecipe()">+ Recipe</button>
+    </div>
+  </header>
+
+  <!-- Search Bar -->
+  <div id="search-bar">
+    <input
+      type="text"
+      id="recipe-search"
+      placeholder="Search recipes or ingredients..."
+    />
+  </div>
+
+
+  <!-- Cookbook View -->
+  <main id="cookbook-view"></main>
+
+  <!-- Add Recipe View -->
+  <main id="recipe-form-view" class="hidden">
+    <button class="back-btn" onclick="hideAddRecipe()">← Back</button>
+
+    <h2 id="recipe-form-title">Add Recipe</h2>
+
+    <form id="recipe-form">
+      <label>
+        Recipe Name
+        <input type="text" id="recipe-name" required />
+      </label>
+
+      <label>Recipe Image</label>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <input type="file" id="recipe-image" accept="image/*" />
+        <button type="button" id="remove-image-btn">Remove Image</button>
+      </div>
+      <img id="image-preview" style="max-width: 100px; margin-top: 8px; display: none;" />
+
+      <label>
+        Section
+        <select id="recipe-section"></select>
+      </label>
+
+      <label>
+        Ingredients (one per line)
+        <textarea id="recipe-ingredients" rows="5"></textarea>
+      </label>
+
+      <label>
+        Steps
+        <textarea id="recipe-steps" rows="6"></textarea>
+      </label>
+
+      <button type="submit" id="recipe-submit-btn">Save Recipe</button>
+
+    </form>
+  </main>
+
+  <!-- Recipe Detail View -->
+  <main id="recipe-detail-view" class="hidden">
+    <button class="back-btn" onclick="hideRecipeDetail()">← Back</button>
+
+    <h2 id="detail-title"></h2>
+    <p id="detail-section"></p>
+
+    <img id="detail-image" style="max-width: 100%; margin-top:12px; display: none;" />
+
+    <h3>Ingredients</h3>
+    <ul id="detail-ingredients"></ul>
+
+    <h3>Steps</h3>
+    <div id="detail-steps"></div>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
