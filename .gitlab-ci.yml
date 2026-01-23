@@ -1,13 +1,22 @@
+# .gitlab-ci.yml
+image: node:lts
+
 stages:
   - deploy
 
 pages:
   stage: deploy
   script:
-    # Create public folder if it doesn't exist
+    # Optional: if you ever add npm dependencies
+    - npm ci || echo "No package.json, skipping npm install"
+    # Make sure the public folder exists
     - mkdir -p public
-    # Copy everything EXCEPT .git, .gitlab-ci.yml, and public itself
-    - rsync -av --exclude='.git' --exclude='.gitlab-ci.yml' --exclude='public' ./ public/
+    # Copy everything except Git files and the public folder itself
+    - for f in * .*; do
+        if [[ "$f" != "." && "$f" != ".." && "$f" != "public" && "$f" != ".git" && "$f" != ".gitlab-ci.yml" ]]; then
+          cp -r "$f" public/
+        fi
+      done
   artifacts:
     paths:
       - public
