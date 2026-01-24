@@ -19,6 +19,27 @@ function saveData() {
   localStorage.setItem("cookbook", JSON.stringify(sections));
 }
 
+// Convert image file to Base64 and store in localStorage
+function saveRecipeImage(file, recipeId) {
+  return new Promise((resolve, reject) => {
+    if (!file) return resolve(null);
+    const reader = new FileReader();
+    reader.onload = () => {
+      // Save Base64 string in localStorage keyed by recipe ID
+      localStorage.setItem(`recipe-img-${recipeId}`, reader.result);
+      resolve(reader.result);
+    };
+    reader.onerror = () => reject(new Error("Failed to read image file"));
+    reader.readAsDataURL(file);
+  });
+}
+
+// Retrieve image later
+function getRecipeImage(recipeId) {
+  return localStorage.getItem(`recipe-img-${recipeId}`);
+}
+
+
 // --------------------
 // Rendering
 // --------------------
@@ -362,7 +383,13 @@ document.getElementById("recipe-form").addEventListener("submit", async e => {
   const section = sections.find(s => s.id === sectionId);
   if (!section) return;
 
-  let imageBase64 = tempImage; // this tracks the desired image state
+  // generate unique ID for this recipe
+  const recipeId = formMode === "edit" ? currentRecipe.id : Date.now().toString();
+
+  // save uploaded image file (if any) to localStorage
+  const fileInput = document.getElementById("recipe-image");
+  const file = fileInput.files[0]; 
+  const imageBase64 = await saveRecipeImage(file, recipeId) || tempImage; 
 
   if (formMode === "edit") {
     currentRecipe.name = name;
@@ -375,7 +402,13 @@ document.getElementById("recipe-form").addEventListener("submit", async e => {
       section.recipes.push(currentRecipe);
     }
   } else {
-    section.recipes.push({ name, ingredients, steps, image: imageBase64 });
+    section.recipes.push({
+      id: recipeId,
+      name,
+      ingredients,
+      steps,
+      image: imageBase64
+    });
   }
 
   saveData();
@@ -384,6 +417,7 @@ document.getElementById("recipe-form").addEventListener("submit", async e => {
   document.getElementById("cookbook-view").classList.remove("hidden");
   thinkResetForm();
 });
+
 
 function thinkResetForm() {
   document.getElementById("recipe-form").reset();
