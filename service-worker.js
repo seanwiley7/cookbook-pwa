@@ -1,4 +1,4 @@
-const CACHE_NAME = "cookbook-cache-v2";
+const CACHE_NAME = "cookbook-v3";
 
 // List of static files to cache
 const STATIC_FILES = [
@@ -14,12 +14,19 @@ const STATIC_FILES = [
 // Install: Cache static assets
 // --------------------
 self.addEventListener("install", event => {
-  console.log("[SW] Installing service worker and caching static assets");
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(STATIC_FILES))
+    caches.open(CACHE_NAME).then(cache => {
+      return cache.addAll([
+        "./",
+        "./index.html",
+        "./styles.css",
+        "./script.js",
+        "./manifest.json"
+      ]);
+    })
   );
-  self.skipWaiting(); // immediately activate new SW
 });
+
 
 // --------------------
 // Activate: clean up old caches
@@ -41,30 +48,22 @@ self.addEventListener("activate", event => {
 // --------------------
 // Fetch: Serve cached content, cache new GET requests
 // --------------------
-self.addEventListener("fetch", event => {
-  const request = event.request;
+self.addEventListener("fetch", (event) => {
+  // If the user refreshes or enters a URL
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      caches.match("./index.html").then((cached) => {
+        return cached || fetch(event.request);
+      })
+    );
+    return;
+  }
 
-  // Only handle GET requests
-  if (request.method !== "GET") return;
-
+  // Normal file requests
   event.respondWith(
-    caches.match(request).then(cachedResponse => {
-      if (cachedResponse) return cachedResponse;
-
-      return fetch(request)
-        .then(networkResponse => {
-          // Cache new requests
-          return caches.open(CACHE_NAME).then(cache => {
-            cache.put(request, networkResponse.clone());
-            return networkResponse;
-          });
-        })
-        .catch(() => {
-          // Fallback if offline
-          if (request.destination === "image") {
-            return caches.match("/icon.png"); // fallback image
-          }
-        });
+    caches.match(event.request).then((cached) => {
+      return cached || fetch(event.request);
     })
   );
 });
+
