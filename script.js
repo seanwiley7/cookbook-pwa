@@ -500,13 +500,15 @@ function showRecipeDetail(section, recipe) {
 
   const stepsEl = document.getElementById("detail-steps");
   stepsEl.innerHTML = "";
+  const stepsList = document.createElement("ol");
   recipe.steps.split("\n").forEach(line => {
     if (line.trim()) {
-      const p = document.createElement("p");
-      p.textContent = line;
-      stepsEl.appendChild(p);
+      const li = document.createElement("li");
+      li.textContent = line;
+      stepsList.appendChild(li);
     }
   });
+  stepsEl.appendChild(stepsList);
 
   const img = document.getElementById("detail-image");
   if (recipe.image) {

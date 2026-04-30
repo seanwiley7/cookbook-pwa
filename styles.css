@@ -148,6 +148,15 @@ section {
   margin-bottom: 12px;
 }
 
+#detail-steps ol {
+  padding-left: 24px;
+}
+
+#detail-steps li {
+  margin-bottom: 10px;
+  line-height: 1.45;
+}
+
 /* --------------------
    TOC
 -------------------- */

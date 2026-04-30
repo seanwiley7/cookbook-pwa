@@ -1,4 +1,4 @@
-const CACHE_NAME = "cookbook-v6";
+const CACHE_NAME = "cookbook-v7";
 
 // List of static files to cache
 const STATIC_FILES = [
