@@ -1,42 +1,290 @@
-let sections = JSON.parse(localStorage.getItem("cookbook")) || [];
+const STORAGE_KEY = "cookbook";
+const DB_NAME = "cookbook-pwa";
+const DB_VERSION = 1;
+const STORE_NAME = "app-state";
+const COOKBOOK_RECORD_ID = "sections";
+
+let sections = [];
 let currentRecipe = null;
 let currentSection = null;
 let formMode = "add";
 let tempImage = null; // temp image for form preview
-let searchQuery = "";
 let draggedRecipe = null;
 let currentSearch = "";
-let draggedSectionId = null;
-let longPressTimer = null;
 let touchDraggingIndex = null;
 let tocEditMode = false; // track TOC edit mode
-
 
 // --------------------
 // Persistence
 // --------------------
-function saveData() {
-  localStorage.setItem("cookbook", JSON.stringify(sections));
+function openDatabase() {
+  return new Promise((resolve, reject) => {
+    if (!("indexedDB" in window)) {
+      reject(new Error("IndexedDB is not available in this browser."));
+      return;
+    }
+
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME, { keyPath: "id" });
+      }
+    };
+
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("Could not open cookbook storage."));
+  });
 }
 
-// Convert image file to Base64 and store in localStorage
-function saveRecipeImage(file, recipeId) {
+async function loadCookbook() {
+  const db = await openDatabase();
+
   return new Promise((resolve, reject) => {
-    if (!file) return resolve(null);
-    const reader = new FileReader();
-    reader.onload = () => {
-      // Save Base64 string in localStorage keyed by recipe ID
-      localStorage.setItem(`recipe-img-${recipeId}`, reader.result);
-      resolve(reader.result);
+    const transaction = db.transaction(STORE_NAME, "readonly");
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.get(COOKBOOK_RECORD_ID);
+
+    request.onsuccess = () => {
+      const saved = request.result?.sections;
+      resolve(Array.isArray(saved) ? saved : []);
     };
-    reader.onerror = () => reject(new Error("Failed to read image file"));
+
+    request.onerror = () => reject(request.error || new Error("Could not load cookbook."));
+    transaction.oncomplete = () => db.close();
+    transaction.onerror = () => db.close();
+    transaction.onabort = () => db.close();
+  });
+}
+
+async function saveCookbook() {
+  const db = await openDatabase();
+
+  return new Promise((resolve, reject) => {
+    let requestFailed = false;
+    const transaction = db.transaction(STORE_NAME, "readwrite");
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.put({
+      id: COOKBOOK_RECORD_ID,
+      sections,
+      updatedAt: new Date().toISOString()
+    });
+
+    request.onerror = () => {
+      requestFailed = true;
+      reject(request.error || new Error("Could not save cookbook."));
+    };
+    transaction.oncomplete = () => {
+      db.close();
+      if (!requestFailed) resolve();
+    };
+    transaction.onerror = () => {
+      db.close();
+      if (!requestFailed) reject(transaction.error || new Error("Could not save cookbook."));
+    };
+    transaction.onabort = () => {
+      db.close();
+      if (!requestFailed) reject(transaction.error || new Error("Could not save cookbook."));
+    };
+  });
+}
+
+function loadLegacyCookbook() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    return Array.isArray(saved) ? saved : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveData() {
+  return saveCookbook()
+    .then(() => true)
+    .catch(error => {
+      console.error(error);
+      setStatus("Could not save. Your browser storage may be full.");
+      return false;
+    });
+}
+
+function ensureStarterSection() {
+  if (sections.length > 0) return false;
+
+  sections = [{
+    id: Date.now().toString(),
+    name: "Uncategorized",
+    recipes: []
+  }];
+  saveData();
+  return true;
+}
+
+async function migrateLegacyCookbookIfNeeded() {
+  const legacySections = loadLegacyCookbook();
+
+  if (sections.length > 0 || legacySections.length === 0) return;
+
+  sections = legacySections;
+  const saved = await saveData();
+
+  if (saved) {
+    localStorage.removeItem(STORAGE_KEY);
+    setStatus("Cookbook moved to larger offline storage.");
+  }
+}
+
+function cleanupLegacyImageCache() {
+  Object.keys(localStorage)
+    .filter(key => key.startsWith("recipe-img-"))
+    .forEach(key => localStorage.removeItem(key));
+}
+
+function setStatus(message) {
+  const status = document.getElementById("app-status");
+  status.textContent = message;
+
+  if (message) {
+    window.clearTimeout(setStatus.timeoutId);
+    setStatus.timeoutId = window.setTimeout(() => {
+      status.textContent = "";
+    }, 4000);
+  }
+}
+
+function normalizeImportedSections(imported) {
+  const importedSections = Array.isArray(imported)
+    ? imported
+    : imported?.sections;
+
+  if (!Array.isArray(importedSections)) {
+    throw new Error("Backup file does not contain cookbook sections.");
+  }
+
+  importedSections.forEach(section => {
+    if (!section || typeof section.name !== "string" || !Array.isArray(section.recipes)) {
+      throw new Error("Backup file does not match this cookbook format.");
+    }
+  });
+
+  return importedSections;
+}
+
+function exportCookbook() {
+  const backup = {
+    exportedAt: new Date().toISOString(),
+    sections
+  };
+  const blob = new Blob([JSON.stringify(backup, null, 2)], {
+    type: "application/json"
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  const date = new Date().toISOString().slice(0, 10);
+
+  link.href = url;
+  link.download = `cookbook-backup-${date}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+  setStatus("Cookbook backup exported.");
+}
+
+document.getElementById("import-file").addEventListener("change", event => {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+
+  reader.onload = async () => {
+    try {
+      const imported = JSON.parse(reader.result);
+      sections = normalizeImportedSections(imported);
+      ensureStarterSection();
+      const saved = await saveData();
+      if (!saved) return;
+      renderCookbook();
+      hideAllViews();
+      document.getElementById("cookbook-view").classList.remove("hidden");
+      setStatus("Cookbook backup imported.");
+    } catch (error) {
+      setStatus(error.message || "Could not import that backup file.");
+    } finally {
+      event.target.value = "";
+    }
+  };
+
+  reader.onerror = () => {
+    setStatus("Could not read that backup file.");
+    event.target.value = "";
+  };
+
+  reader.readAsText(file);
+});
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("Could not read that image."));
     reader.readAsDataURL(file);
   });
 }
 
-// Retrieve image later
-function getRecipeImage(recipeId) {
-  return localStorage.getItem(`recipe-img-${recipeId}`);
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Could not load that image."));
+    image.src = src;
+  });
+}
+
+async function prepareRecipeImage(file) {
+  if (!file) return null;
+
+  const original = await readFileAsDataUrl(file);
+  const image = await loadImage(original);
+  const maxSize = 1200;
+  const scale = Math.min(1, maxSize / Math.max(image.width, image.height));
+  const width = Math.max(1, Math.round(image.width * scale));
+  const height = Math.max(1, Math.round(image.height * scale));
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+
+  canvas.width = width;
+  canvas.height = height;
+  context.drawImage(image, 0, 0, width, height);
+
+  return canvas.toDataURL("image/jpeg", 0.78);
+}
+
+async function updateImagePreview(fileInput, preview, removeBtn) {
+  const file = fileInput.files[0];
+
+  if (!file) {
+    tempImage = null;
+    preview.src = "";
+    preview.style.display = "none";
+    removeBtn.style.display = "none";
+    return;
+  }
+
+  try {
+    setStatus("Preparing image...");
+    tempImage = await prepareRecipeImage(file);
+    preview.src = tempImage;
+    preview.style.display = "block";
+    removeBtn.style.display = "inline-block";
+    setStatus("Image ready.");
+  } catch (error) {
+    tempImage = null;
+    fileInput.value = "";
+    preview.src = "";
+    preview.style.display = "none";
+    removeBtn.style.display = "none";
+    setStatus(error.message || "Could not use that image.");
+  }
 }
 
 
@@ -193,6 +441,7 @@ function hideRecipeDetail() {
 // Add Recipe
 // --------------------
 function showAddRecipe() {
+  ensureStarterSection();
   formMode = "add";
   currentRecipe = null;
   currentSection = null;
@@ -211,6 +460,8 @@ function showAddRecipe() {
   const preview = document.getElementById("image-preview");
   const removeBtn = document.getElementById("remove-image-btn");
 
+  fileInput.value = "";
+
   preview.src = "";
   preview.style.display = "none";
   removeBtn.style.display = "none";
@@ -223,24 +474,7 @@ function showAddRecipe() {
     removeBtn.style.display = "none";
   };
 
-  fileInput.onchange = () => {
-    const file = fileInput.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        preview.src = reader.result;
-        preview.style.display = "block";
-        removeBtn.style.display = "inline-block";
-        tempImage = reader.result;
-      };
-      reader.readAsDataURL(file);
-    } else {
-      tempImage = null;
-      preview.src = "";
-      preview.style.display = "none";
-      removeBtn.style.display = "none";
-    }
-  };
+  fileInput.onchange = () => updateImagePreview(fileInput, preview, removeBtn);
 }
 
 // --------------------
@@ -335,6 +569,8 @@ function editRecipe(section, recipe) {
   const preview = document.getElementById("image-preview");
   const removeBtn = document.getElementById("remove-image-btn");
 
+  fileInput.value = "";
+
   if (tempImage) {
     preview.src = tempImage;
     preview.style.display = "block";
@@ -353,19 +589,7 @@ function editRecipe(section, recipe) {
     removeBtn.style.display = "none";
   };
 
-  fileInput.onchange = () => {
-    const file = fileInput.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        preview.src = reader.result;
-        preview.style.display = "block";
-        removeBtn.style.display = "inline-block";
-        tempImage = reader.result;
-      };
-      reader.readAsDataURL(file);
-    }
-  };
+  fileInput.onchange = () => updateImagePreview(fileInput, preview, removeBtn);
 }
 
 // --------------------
@@ -383,19 +607,14 @@ document.getElementById("recipe-form").addEventListener("submit", async e => {
   const section = sections.find(s => s.id === sectionId);
   if (!section) return;
 
-  // generate unique ID for this recipe
   const recipeId = formMode === "edit" ? currentRecipe.id : Date.now().toString();
-
-  // save uploaded image file (if any) to localStorage
-  const fileInput = document.getElementById("recipe-image");
-  const file = fileInput.files[0]; 
-  const imageBase64 = await saveRecipeImage(file, recipeId) || tempImage; 
+  const image = tempImage;
 
   if (formMode === "edit") {
     currentRecipe.name = name;
     currentRecipe.ingredients = ingredients;
     currentRecipe.steps = steps;
-    currentRecipe.image = imageBase64;
+    currentRecipe.image = image;
 
     if (currentSection.id !== section.id) {
       currentSection.recipes = currentSection.recipes.filter(r => r !== currentRecipe);
@@ -407,15 +626,21 @@ document.getElementById("recipe-form").addEventListener("submit", async e => {
       name,
       ingredients,
       steps,
-      image: imageBase64
+      image
     });
   }
 
-  saveData();
-  renderCookbook();
-  hideAllViews();
-  document.getElementById("cookbook-view").classList.remove("hidden");
-  thinkResetForm();
+  try {
+    const saved = await saveData();
+    if (!saved) return;
+    renderCookbook();
+    hideAllViews();
+    document.getElementById("cookbook-view").classList.remove("hidden");
+    thinkResetForm();
+    setStatus("Recipe saved.");
+  } catch (error) {
+    setStatus("Could not save. Try a smaller image or remove older images.");
+  }
 });
 
 
@@ -433,6 +658,7 @@ function thinkResetForm() {
 // Helpers
 // --------------------
 function populateSectionDropdown() {
+  ensureStarterSection();
   const select = document.getElementById("recipe-section");
   select.innerHTML = "";
   sections.forEach(s => {
@@ -440,15 +666,6 @@ function populateSectionDropdown() {
     opt.value = s.id;
     opt.textContent = s.name;
     select.appendChild(opt);
-  });
-}
-
-function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
   });
 }
 
@@ -650,18 +867,33 @@ function enableAutoScroll(container) {
 }
 
 
-// Init
-renderCookbook();
-
-
 // --------------------
 // Register Service Worker
 // --------------------
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker
-      .register("/service-worker.js")
+      .register("./service-worker.js")
       .then(reg => console.log("Service Worker registered", reg))
       .catch(err => console.error("Service Worker failed", err));
   });
 }
+
+async function initializeApp() {
+  try {
+    sections = await loadCookbook();
+    await migrateLegacyCookbookIfNeeded();
+    const createdStarterSection = ensureStarterSection();
+    if (createdStarterSection) await saveData();
+    cleanupLegacyImageCache();
+    renderCookbook();
+  } catch (error) {
+    console.error(error);
+    setStatus("Could not open offline storage. Try refreshing the app.");
+    sections = [];
+    ensureStarterSection();
+    renderCookbook();
+  }
+}
+
+initializeApp();

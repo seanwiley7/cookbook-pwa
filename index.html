@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>My Cookbook</title>
   <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#5f6f52" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -28,8 +29,13 @@
     <div class="header-buttons">
       <button onclick="addSection()">+ Section</button>
       <button onclick="showAddRecipe()">+ Recipe</button>
+      <button onclick="exportCookbook()">Export</button>
+      <button onclick="document.getElementById('import-file').click()">Import</button>
+      <input type="file" id="import-file" class="hidden" accept="application/json,.json" />
     </div>
   </header>
+
+  <p id="app-status" class="app-status" aria-live="polite"></p>
 
   <!-- Search Bar -->
   <div id="search-bar">
@@ -39,7 +45,6 @@
       placeholder="Search recipes or ingredients..."
     />
   </div>
-
 
   <!-- Cookbook View -->
   <main id="cookbook-view"></main>

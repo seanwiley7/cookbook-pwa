@@ -1,13 +1,14 @@
-const CACHE_NAME = "cookbook-v3";
+const CACHE_NAME = "cookbook-v6";
 
 // List of static files to cache
 const STATIC_FILES = [
-  "/",
-  "/index.html",
-  "/styles.css",
-  "/script.js",
-  "/manifest.json",
-  "/icon.png"
+  "./",
+  "./index.html",
+  "./styles.css",
+  "./script.js",
+  "./manifest.json",
+  "./icon-192.png",
+  "./icon-512.png"
 ];
 
 // --------------------
@@ -15,16 +16,9 @@ const STATIC_FILES = [
 // --------------------
 self.addEventListener("install", event => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => {
-      return cache.addAll([
-        "./",
-        "./index.html",
-        "./styles.css",
-        "./script.js",
-        "./manifest.json"
-      ]);
-    })
+    caches.open(CACHE_NAME).then(cache => cache.addAll(STATIC_FILES))
   );
+  self.skipWaiting();
 });
 
 
@@ -49,10 +43,12 @@ self.addEventListener("activate", event => {
 // Fetch: Serve cached content, cache new GET requests
 // --------------------
 self.addEventListener("fetch", (event) => {
+  if (event.request.method !== "GET") return;
+
   // If the user refreshes or enters a URL
   if (event.request.mode === "navigate") {
     event.respondWith(
-      caches.match("./index.html").then((cached) => {
+      caches.match("./index.html").then(cached => {
         return cached || fetch(event.request);
       })
     );
@@ -61,9 +57,16 @@ self.addEventListener("fetch", (event) => {
 
   // Normal file requests
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      return cached || fetch(event.request);
+    caches.match(event.request).then(cached => {
+      return cached || fetch(event.request).then(response => {
+        if (!response || response.status !== 200) {
+          return response;
+        }
+
+        const copy = response.clone();
+        caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+        return response;
+      });
     })
   );
 });
-
